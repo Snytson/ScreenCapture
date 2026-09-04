@@ -91,6 +91,7 @@ void WinPin::onClosed()
 	// 防止 close() 被走两遍（比如按钮和快捷键先后触发）时排两次销毁
 	if (isClosed) return;
 	isClosed = true;
+	if (editingText) editingText->finishEdit();
 	// 先收起附属窗口，再让出 hover 指针 —— shapeHover 指向 history 里的元素，
 	// history 随 WinPin 一起析构，留着悬空指针没意义
 	if (toolSub) toolSub->close();

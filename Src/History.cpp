@@ -122,15 +122,12 @@ void History::removeShape(ShapeBase* target)
 {
     for (auto it = shapes.begin(); it != shapes.end(); ++it) {
         if (it->get() == target) {
-            shapes.erase(it);
-            break;
+			win->shapeHover = nullptr; 
         }
+        shapes.erase(it);
+        win->refresh();
+        return;
     }
-    // hover 指针指向的正是刚被销毁的那个元素时必须清掉，否则下一次绘制/命中就是野指针
-    if (win->shapeHover == target) {
-        win->shapeHover = nullptr;
-    }
-    win->refresh();
 }
 
 void History::removeUndoShape()
