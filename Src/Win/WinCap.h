@@ -28,7 +28,9 @@ public:
 	void restoreWin();
 	// 下面都是给工具条用的门面 ————————————————
 	// ToolCap
-	void startPin();
+	// showTools=false 是纯钉图：贴图窗口一建出来就收起工具条，左键点图或右键唤回。
+	// ToolCap 上的 pin 按钮传 false，mark 按钮与 Ctrl 框选走默认的 true
+	void startPin(bool showTools = true);
 	void startLong();
 	void startVideo();
 	void startOcr();

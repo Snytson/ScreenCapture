@@ -35,8 +35,32 @@
 
 ## 编译
 
-- main分支依赖 [Ling](https://github.com/xland/Ling) GUI 框架.
-- 使用 Visual Studio 2026（With C++ Desktop Dev Kit）即可编译项目。
+需要 [Visual Studio 2026（With C++ Desktop Dev Kit）](https://visualstudio.microsoft.com/)，工具集 `v145`。
+
+除本仓库外还要检出两个依赖，**都放在与本仓库同级的目录下**（目录名必须是 `Ling` 和 `gifski`）：
+
+```
+父目录/
+├── ScreenCapture/   ← 本仓库
+├── Ling/            ← git clone https://github.com/xland/Ling.git
+└── gifski/          ← git clone https://github.com/ImageOptim/gifski.git
+```
+
+- [Ling](https://github.com/xland/Ling) 是 GUI 框架，产物 `Ling.lib` + `Yoga.lib`；
+- [gifski](https://github.com/ImageOptim/gifski) 提供 GIF 编码的 C 接口，在 `gifski/` 下执行
+  `cargo build --release --lib`，产物 `target/release/gifski.lib`。
+
+依赖放在别处也行，生成时覆盖路径即可：
+
+```
+msbuild Src\ScreenCapture.vcxproj /p:Configuration=Release /p:Platform=x64 ^
+        /p:LingDir=D:\project\Ling /p:GifskiDir=D:\sdk\gifski
+```
+
+产物是 `x64\Release\ScreenCapture.exe`（单文件，语言文件和图标字体都编在里面）。
+推送和 PR 会由 [.github/workflows/build.yml](./.github/workflows/build.yml) 自动完成上述步骤，
+手动触发时还能选 Debug 配置、或指定 `PlatformToolset`。
+
 - [2.4.25（基于D2D）](https://github.com/xland/ScreenCapture/tree/2.4.25)或 [2.3.3（基于Qt）](https://github.com/xland/ScreenCapture/tree/2.3.3_qt)是以前的稳定分支。
 
 ## 命令行

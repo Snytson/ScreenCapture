@@ -25,12 +25,13 @@ namespace {
 	}
 }
 
-WinPin::WinPin(int x, int y, int w, int h, const std::vector<BYTE>* data) : Ling::WinBase(), history{ std::make_unique<History>(this) }
+WinPin::WinPin(int x, int y, int w, int h, bool showTools, const std::vector<BYTE>* data) : Ling::WinBase(), history{ std::make_unique<History>(this) }
 {
 	this->x = x;
 	this->y = y;
 	this->w = w;
 	this->h = h;
+	showToolsAtStart = showTools;
 	if (data) {
 		// 外部像素建底图。ShapeMosaic / ShapeEraser 会把它当画刷源，属性与 getCutImg() 出来的保持一致
 		D2D1_BITMAP_PROPERTIES1 props{};
@@ -247,9 +248,9 @@ WinPin::~WinPin()
 {
 }
 
-void WinPin::init(int x, int y, int w, int h)
+void WinPin::init(int x, int y, int w, int h, bool showTools)
 {
-	auto ptr = new WinPin(x,y,w,h);
+	auto ptr = new WinPin(x, y, w, h, showTools);
 	std::unique_ptr<WinPin> winPin{ ptr };
 	ptr->createNativeWindow(WS_EX_TOPMOST| WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_POPUP);
 	winPins.push_back(std::move(winPin));
@@ -257,7 +258,7 @@ void WinPin::init(int x, int y, int w, int h)
 
 void WinPin::initFromData(int x, int y, int w, int h, std::vector<BYTE>& data)
 {
-	auto ptr = new WinPin(x, y, w, h, &data);
+	auto ptr = new WinPin(x, y, w, h, true, &data);
 	std::unique_ptr<WinPin> winPin{ ptr };
 	ptr->createNativeWindow(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_POPUP);
 	winPins.push_back(std::move(winPin));
@@ -274,6 +275,9 @@ void WinPin::onCreated()
     d2d->deviceContext->CreateSolidColorBrush(D2D1::ColorF(0x1677ff), borderBrush.GetAddressOf());
     d2d->deviceContext->CreateSolidColorBrush(D2D1::ColorF(0x000000, 0.46f), brushTipBg.GetAddressOf());
     d2d->deviceContext->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), brushTipText.GetAddressOf());
+    // 纯钉图模式：ToolMain 是独立窗口、构造函数里已经自己 show 过一次，这里补一下把它收掉。
+    // 唤回它的路本来就铺好了两条 —— 右键在 onDown 里切，左键抬手在 onUp 里切
+    if (!showToolsAtStart) toolMain->hide();
     show();
 }
 
@@ -377,6 +381,10 @@ void WinPin::onDown(POINT pos, BOOL isRight)
 	hasDragged = false;
 	SetCapture(hwnd);
 	if (toolMain->curId == L"") { //没选画笔，左键是拖窗口，拖的时候把工具条收起来
+		// 先记住按下去之前工具条是不是显示着：抬手时要按它恢复原样。
+		// 拖动只是把窗口挪个地方，不该顺手改变工具条的显隐 —— 纯钉图模式进来时
+		// 工具条本来就是收起的，要是拖一下图它就冒出来，那个模式就白做了
+		toolBarWasVisible = IsWindowVisible(toolMain->hwnd) != FALSE;
 		toolMain->hide();
 		return;
 	}
@@ -399,6 +407,13 @@ void WinPin::onMove(POINT pos)
 	auto imgPos = toImgPos(pos);
 	if (isMouseDown) {
 		if (toolMain->curId == L"") {
+			// 光标一步没挪也会来 WM_MOUSEMOVE，所以要跟按下点比一下才算拖动。
+			// 阈值取系统的"拖动矩形"（SM_CXDRAG/CYDRAG）而不是严格不等 ——
+			// 抬手时靠 hasDragged 区分"拖窗口"和"点一下"，手抖一两个像素不该被当成拖动
+			if (std::abs(pos.x - pressPos.x) > GetSystemMetrics(SM_CXDRAG)
+				|| std::abs(pos.y - pressPos.y) > GetSystemMetrics(SM_CYDRAG)) {
+				hasDragged = true;
+			}
 			setPosition(x + pos.x - pressPos.x, y + pos.y - pressPos.y);
 			return;
 		}
@@ -446,12 +461,13 @@ void WinPin::onUp(POINT pos, BOOL isRight)
 	// 这一下按下有没有新建出一个留得住的元素：紧接着来第二下凑成双击时要把它撤掉（见 onDown）
 	prevPressCreatedShape = false;
 	if (toolMain->curId == L"") {
-		// 没选画笔，这一下要么是拖完窗口（按新位置重排工具条），要么只是点了一下 ——
-		// 两种情况都把 ToolMain 显示出来：拖动期间它是藏着的，右键之后它也是藏着的，
-		// 左键点一下就是"我还要用工具条"。ToolSub 由 curId 驱动，这会儿仍然不该出来，
-		// layoutTools 里已经管了
+		// 没选画笔：layoutTools 一律要走一遍，拖完窗口工具条得跟着挪到新位置。
+		// 但"要不要变显隐"是另一码事 —— 拖动只是把窗口挪个地方，按下前是显示还是收起，
+		// 抬手就还它原样（toolBarWasVisible）；只有原地单击才是"我还要用工具条"，
+		// 把收起的 ToolMain 请回来。右键同样能切显隐，见 onDown。
+		// ToolSub 由 curId 驱动，这会儿仍然不该出来，layoutTools 里已经管了
 		layoutTools();
-		toolMain->show();
+		if (!hasDragged || toolBarWasVisible) toolMain->show();
 	}
 	else if (shapeHover) {
 		// 新建的这一笔按下马上弹起，什么也没画出来：直接丢掉，

@@ -10,7 +10,10 @@ class WinPin : public Ling::WinBase
 {
 public:
 	~WinPin();
-	static void init(int x, int y, int w, int h);
+	// showTools = false 是「纯钉图」：窗口一出来就只有图，工具条收起来，
+	// 左键点一下图或者右键都能把它请回来。ToolCap 上那个 pin 按钮走这条；
+	// 图像标记 / Ctrl 框选 / --enter=pin 都还是默认的带工具条
+	static void init(int x, int y, int w, int h, bool showTools = true);
 	// 底图不来自 WinCap 的截屏，而是外部给的一块 BGRA、top-down、行紧凑（步长 = w*4）像素。
 	// 滚动截图（WinLong）拼出来的长图走这条路进贴图窗口。
 	static void initFromData(int x, int y, int w, int h, std::vector<BYTE>& data);
@@ -50,7 +53,7 @@ public:
 	// 贴图窗口的底图。ShapeMosaic 要读它算马赛克块，ShapeEraser 拿它当"擦回原样"的画刷
 	Microsoft::WRL::ComPtr<ID2D1Bitmap1> screenImg;
 private:
-	WinPin(int x, int y, int w, int h, const std::vector<BYTE>* data = nullptr);
+	WinPin(int x, int y, int w, int h, bool showTools = true, const std::vector<BYTE>* data = nullptr);
 	void onCreated() override;
 	void layout() override;
 	void onMinMaxInfo(MINMAXINFO* mmi) override;
@@ -92,6 +95,9 @@ private:
 	Microsoft::WRL::ComPtr<IDWriteTextLayout> scaleTip;
 	Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> brushTipBg, brushTipText;
 	bool isMouseDown{ false }, isClosed{ false };
+	// 纯钉图模式。只管"刚建出来那一下"要不要收工具条，之后用户随时能用左键/右键
+	// 把它唤回来，所以这个标记不需要再翻回去
+	bool showToolsAtStart{ true };
 	// onDpiChanged 与 onSizeChanged 之间的接力标记，见构造函数里的注释
 	bool dpiChanged{ false };
 	POINT pressPos{ 0,0 };
@@ -103,5 +109,8 @@ private:
 	// 上一次按下是不是新建了一个留得住的元素（现在只有序号：按一下就成形，
 	// 别的都在抬手时按"没画出东西"清掉了）。双击的前半段放下的东西不该被复制进剪切板
 	bool prevPressCreatedShape{ false };
+	// 按下之前工具条是不是显示着（onDown 里记）。抬手时用它决定要不要恢复 ——
+	// 拖动只挪窗口、不该改变工具条的显隐，只有原地单击才算"我要把工具条叫出来"
+	bool toolBarWasVisible{ false };
 };
 

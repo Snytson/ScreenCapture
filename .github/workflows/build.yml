@@ -1,0 +1,103 @@
+name: Build
+
+# push / PR 自动跑；想指定配置或换工具集就手动触发
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: 生成配置
+        type: choice
+        options: [Release, Debug]
+        default: Release
+      platform_toolset:
+        description: 覆盖 PlatformToolset（留空 = 用项目里的 v145；跑不起来时填 v143）
+        type: string
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CONFIGURATION: ${{ inputs.configuration || 'Release' }}
+  TOOLSET: ${{ inputs.platform_toolset }}
+  LING_REPO: xland/Ling
+  GIFSKI_REPO: ImageOptim/gifski
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      # 三个仓库必须 checkout 成同级目录：ScreenCapture.vcxproj 默认就从
+      # <本仓库>/../Ling 和 <本仓库>/../gifski 找依赖，不用额外传 /p:LingDir
+      - name: Checkout ScreenCapture
+        uses: actions/checkout@v4
+        with:
+          path: ScreenCapture
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      # Ling 是静态库（Ling.lib），自带一个 Yoga 的 vcxproj（Yoga.lib），
+      # 两个项目都靠 $(SolutionDir) 定位 IntDir 和 include 目录 —— 直接生成
+      # .vcxproj 而不经过解决方案时它是空的，所以必须显式传，且结尾要带反斜杠
+      - name: Checkout Ling
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.LING_REPO }}
+          path: Ling
+
+      - name: Build Yoga and Ling
+        working-directory: ${{ github.workspace }}
+        shell: cmd
+        run: |
+          set "TOOLSET_ARG="
+          if not "%TOOLSET%"=="" set "TOOLSET_ARG=/p:PlatformToolset=%TOOLSET%"
+          set "SLN_DIR=%GITHUB_WORKSPACE%\Ling\"
+          msbuild Ling\yoga\yoga.vcxproj /nologo /m /v:minimal /p:Configuration=%CONFIGURATION% /p:Platform=x64 /p:SolutionDir=%SLN_DIR% %TOOLSET_ARG%
+          if errorlevel 1 exit /b 1
+          msbuild Ling\Ling.vcxproj /nologo /m /v:minimal /p:Configuration=%CONFIGURATION% /p:Platform=x64 /p:SolutionDir=%SLN_DIR% %TOOLSET_ARG%
+          if errorlevel 1 exit /b 1
+
+      # gifski 的 C API：gifski.h 在仓库根，crate-type 含 staticlib，
+      # cargo build --release --lib 出的 target/release/gifski.lib 就是链接要用的那个
+      # （cdylib 的导入库另叫 gifski.dll.lib，不会撞名）
+      - name: Checkout gifski
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.GIFSKI_REPO }}
+          path: gifski
+
+      - name: Cache gifski build
+        uses: actions/cache@v4
+        with:
+          path: gifski/target
+          key: gifski-${{ runner.os }}-${{ hashFiles('gifski/Cargo.lock') }}
+
+      - name: Build gifski
+        working-directory: gifski
+        run: |
+          cargo --version
+          cargo build --release --lib
+
+      - name: Build ScreenCapture
+        working-directory: ScreenCapture
+        shell: cmd
+        run: |
+          set "TOOLSET_ARG="
+          if not "%TOOLSET%"=="" set "TOOLSET_ARG=/p:PlatformToolset=%TOOLSET%"
+          msbuild Src\ScreenCapture.vcxproj /nologo /m /v:minimal /p:Configuration=%CONFIGURATION% /p:Platform=x64 %TOOLSET_ARG%
+          if errorlevel 1 exit /b 1
+
+      # 产物是单文件 exe（语言文件和图标字体都用 .rc 编在里面了）
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScreenCapture-${{ env.CONFIGURATION }}-x64
+          path: ScreenCapture/x64/${{ env.CONFIGURATION }}/ScreenCapture.exe
+          if-no-files-found: error

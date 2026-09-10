@@ -73,8 +73,13 @@ void ToolCap::onClick(Ling::Button* btn)
 {
 	// 提示框跟着按钮所在的窗口走，这里马上要换阶段或者关窗口，先把它收掉
 	tip->hide();
+	// mark 与 pin 都进 WinPin 贴图窗口，差别只在进去之后的样子：
+	// mark = 图像标记，带着工具条进去；pin = 纯钉图，只有图，左键点图或右键再把工具条唤回来
 	if (btn->id == L"mark") {
 		win->startPin();
+	}
+	else if (btn->id == L"pin") {
+		win->startPin(false);
 	}
 	else if (btn->id == L"long") {
 		win->startLong();
