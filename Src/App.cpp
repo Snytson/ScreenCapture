@@ -93,8 +93,12 @@ void App::excludeFromCapture(HWND hwnd)
 
 App::App()
 {
-    Ling::init(L"ScreenCapture");
+    // Ling 把应用名从 init(name) 的参数挪到了 App::appID 这个成员上，这里跟着改。
+    // appID 只在 refuseSecondInstance()（找同名消息窗口做单实例判定）和
+    // initMsgWin()（消息窗口标题）里读，两条路都是后话，所以 init 之后再赋值来得及
+    Ling::init();
     auto app = Ling::App::get();
+    app->appID = L"ScreenCapture";
     app->initArgs();
     Ling::D2D::addFonts({ L"icon.ttf" });
     // 录制中直接退出会让编码线程和 D3D 设备一起卡住，退出前先把录制停掉

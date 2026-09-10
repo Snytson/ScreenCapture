@@ -1,4 +1,5 @@
 ﻿#include "pch.h"
+#include <algorithm>
 #include <filesystem>
 #include "../App.h"
 #include "../Lang.h"
@@ -108,8 +109,13 @@ void WinSetting::initMenuItems(Ling::Node* menuBox)
 }
 void WinSetting::onMenuItemClick(Ling::Button* menuItem)
 {
-	auto index = Ling::Util::getIndex(menus, menuItem);
-	if (index < 0 || index == menuIndex) return;
+	// 这里不用 Ling::Util::getIndex：它声明返回 int，而 std::ranges::distance 在 x64 上
+	// 给的是 __int64（ptrdiff_t），会在 CI 日志里刷一条 C4244，而且那条警告是从 Ling 的
+	// 头文件里抛出来的，我们这边的开关压不住。菜单项就三个，显式转 int 是安全的
+	auto it = std::ranges::find(menus, menuItem);
+	if (it == menus.end()) return;
+	auto index = static_cast<int>(std::distance(menus.begin(), it));
+	if (index == menuIndex) return;
 	// 通用设置里的语言下拉框是挂在 body 上的（要能盖住下面的控件），content 被换掉
 	// 它不会跟着消失，所以切菜单之前先收掉
 	if (menuIndex == 0) {
